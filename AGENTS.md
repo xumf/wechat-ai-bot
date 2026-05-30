@@ -40,7 +40,7 @@ interface Plugin {
 }
 ```
 
-All plugins registered in `src/index.ts` before `bot.start()`. Active: help, clear, weather, reminder, keyword, translate, rss, price.
+All plugins registered in `src/index.ts` before `bot.start()`. Active: help, clear, weather, reminder, keyword, translate, rss, price, joke, hot, stock.
 
 ## Scheduled tasks
 

@@ -10,3 +10,6 @@ export { rssPlugin, startRSSPolling } from './rss';
 export { subscribeDaily, startDailyGreeting } from './daily';
 export { setBotInstance, setupRoomEvents } from './room-manager';
 export { pricePlugin, startPriceTracking } from './price';
+export { jokePlugin } from './joke';
+export { hotPlugin } from './hot';
+export { stockPlugin } from './stock';

@@ -221,6 +221,10 @@ export async function scrapeUrlPrice(url: string): Promise<{ name: string; price
   }
 }
 
+export async function getBrowserContext(): Promise<BrowserContext> {
+  return getContext();
+}
+
 export async function closeContext() {
   if (ctx) {
     await ctx.close();

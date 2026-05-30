@@ -11,6 +11,7 @@ import {
   helpPlugin, clearPlugin, weatherPlugin, reminderPlugin, keywordPlugin,
   translatePlugin, rssPlugin, startRSSPolling, subscribeDaily, startDailyGreeting,
   setBotInstance, setupRoomEvents, pricePlugin, startPriceTracking,
+  jokePlugin, hotPlugin, stockPlugin,
 } from './plugins';
 
 async function main() {
@@ -33,6 +34,9 @@ async function main() {
   registerPlugin(translatePlugin);
   registerPlugin(rssPlugin);
   registerPlugin(pricePlugin);
+  registerPlugin(jokePlugin);
+  registerPlugin(hotPlugin);
+  registerPlugin(stockPlugin);
 
   const bot = WechatyBuilder.build({
     name: config.bot.name,
