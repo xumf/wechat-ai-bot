@@ -1,0 +1,50 @@
+# WeChat AI Bot — Agents Guide
+
+## Quick start
+
+```bash
+npm run dev      # ts-node, for development
+npm run build    # tsc
+npm start        # node dist/index.js
+npm run login:china  # headful browser to log into Taobao/JD for price scraping
+```
+
+`.env` is required (see `.env.example`). API: DeepSeek at `https://api.deepseek.com`, model `deepseek-v4-flash`.
+
+## Architecture
+
+- **Entry**: `src/index.ts` — builds `WechatyBuilder` with `wechaty-puppet-wechat4u` (pure Node.js, no Chrome dependency for WeChat login).
+- **Message routing** (`src/handlers/message.ts`): command (`/`) → keyword match → price intent detection → AI fallback.
+- **Plugins** (`src/plugins/`): each exports a `Plugin` object via `registerPlugin()`. Commands defined in `commands[]`, matched by `handleCommand()` in `registry.ts`.
+- **Price scraping** (`src/services/scraper.ts`): Playwright + stealth plugin, persistent browser profile at `data/browser-profile`. Cookies backup at `data/cookies.json` (only Taobao cookies injected from JSON).
+
+## Gotchas
+
+- **`ctx.rawText`** in `CommandContext` is set by `handleCommand()` in `registry.ts`. Plugins reading `ctx.rawText` (translate, price) will break if new code forgets to set it.
+- **Taobao search** uses CSS module hashed classes (e.g., `div[class*="doubleCard"]`). These may break on Taobao frontend updates.
+- **JD search** is blocked by anti-scraping ("访问频繁"). Login works (persistent profile), search doesn't. Fixing JD requires `playwright-extra` stealth upgrades, different IP/proxy, or headful mode.
+- **Amazon search** works with no auth needed.
+- **Login flow**: `npm run login:china` opens headful Chrome, user logs in, presses Enter to save. Must re-run when cookies expire.
+- **GitHub push** over HTTPS is blocked on this network; use SSH (`git@github.com:xumf/wechat-ai-bot.git`).
+- **Data files** in `data/` are gitignored (profile, cookies, price-tracks, RSS state).
+
+## Plugin system
+
+```typescript
+interface Plugin {
+  name: string;
+  description: string;
+  commands?: string[];      // e.g. ['/price', '/比价']
+  onCommand?: (ctx: CommandContext) => Promise<string | null>;
+  onMessage?: (text: string, ctx: CommandContext) => Promise<string | null>;
+}
+```
+
+All plugins registered in `src/index.ts` before `bot.start()`. Active: help, clear, weather, reminder, keyword, translate, rss, price.
+
+## Scheduled tasks
+
+- RSS feeds: polling every 30 min
+- Price tracking: every 6 hours
+- Daily greeting: 7:00 AM
+- Room events: welcome on join, notice on leave
