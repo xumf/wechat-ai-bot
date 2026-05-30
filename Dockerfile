@@ -6,7 +6,6 @@ RUN sed -i 's|deb.debian.org|mirrors.aliyun.com|g' /etc/apt/sources.list.d/debia
     true
 
 ENV NPM_REGISTRY=https://registry.npmmirror.com
-ENV PLAYWRIGHT_DOWNLOAD_HOST=https://npmmirror.com/mirrors/playwright/
 
 # Playwright system dependencies + CJK fonts
 RUN apt-get update && apt-get install -y \
