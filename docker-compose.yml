@@ -6,8 +6,5 @@ services:
     tty: true
     env_file: .env
     volumes:
-      - wechat-bot-data:/app/data
+      - ./data:/app/data
     restart: always
-
-volumes:
-  wechat-bot-data:
