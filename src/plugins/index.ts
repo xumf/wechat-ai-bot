@@ -13,3 +13,4 @@ export { pricePlugin, startPriceTracking } from './price';
 export { jokePlugin } from './joke';
 export { hotPlugin } from './hot';
 export { stockPlugin } from './stock';
+export { convertPlugin } from './convert';
