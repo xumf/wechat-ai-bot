@@ -18,6 +18,7 @@ export async function handleCommand(text: string, ctx: CommandContext): Promise<
   const args = parts.slice(1);
 
   ctx.args = args;
+  ctx.rawText = text;
 
   for (const plugin of plugins) {
     if (plugin.commands?.includes(cmd) && plugin.onCommand) {

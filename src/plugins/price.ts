@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import schedule from 'node-schedule';
 import { Plugin } from './types';
-import { searchAmazonPrice, scrapeUrlPrice as scraperScrapeUrl } from '../services/scraper';
+import { searchAmazonPrice, searchTaobaoPrice, searchJdPrice, scrapeUrlPrice as scraperScrapeUrl } from '../services/scraper';
 import logger from '../utils/logger';
 
 const DATA_FILE = path.join(__dirname, '../../data/price-tracks.json');
@@ -90,11 +90,13 @@ export const pricePlugin: Plugin = {
 
       await ctx.say(`🔍 正在实时搜索 "${rest}" 的价格...`);
 
-      const [amzResults] = await Promise.all([
+      const [amzResults, tbResults, jdResults] = await Promise.all([
         searchAmazonPrice(rest).catch(() => [] as any[]),
+        searchTaobaoPrice(rest).catch(() => [] as any[]),
+        searchJdPrice(rest).catch(() => [] as any[]),
       ]);
 
-      const allResults = [...amzResults];
+      const allResults = [...tbResults, ...jdResults, ...amzResults];
       if (allResults.length === 0) {
         return `❌ 未搜索到 "${rest}" 的实时价格`;
       }
