@@ -1,0 +1,36 @@
+{
+  "name": "wechat-ai-bot",
+  "version": "1.0.0",
+  "description": "WeChat AI chatbot powered by wechaty",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "ts-node src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "lint": "eslint src/",
+    "docker:build": "docker build -t wechat-ai-bot .",
+    "docker:run": "docker run -it --rm --name wechat-bot wechat-ai-bot"
+  },
+  "dependencies": {
+    "cheerio": "^1.2.0",
+    "dotenv": "^16.3.1",
+    "node-schedule": "^2.1.1",
+    "openai": "^4.20.0",
+    "playwright": "^1.60.0",
+    "qrcode-terminal": "^0.12.0",
+    "rss-parser": "^3.13.0",
+    "wechaty": "^1.20.2",
+    "wechaty-puppet-wechat4u": "^1.14.14",
+    "winston": "^3.11.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "@types/node-schedule": "^2.1.5",
+    "@types/qrcode-terminal": "^0.12.2",
+    "@typescript-eslint/eslint-plugin": "^6.13.0",
+    "@typescript-eslint/parser": "^6.13.0",
+    "eslint": "^8.55.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.3.2"
+  }
+}

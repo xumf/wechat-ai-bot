@@ -1,0 +1,12 @@
+export { Plugin, CommandContext } from './types';
+export { registerPlugin, getPlugins, handleCommand, handleKeyword } from './registry';
+export { helpPlugin } from './help';
+export { clearPlugin } from './clear';
+export { weatherPlugin } from './weather';
+export { reminderPlugin } from './reminder';
+export { keywordPlugin } from './keyword';
+export { translatePlugin } from './translate';
+export { rssPlugin, startRSSPolling } from './rss';
+export { subscribeDaily, startDailyGreeting } from './daily';
+export { setBotInstance, setupRoomEvents } from './room-manager';
+export { pricePlugin, startPriceTracking } from './price';
