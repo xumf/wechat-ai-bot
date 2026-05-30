@@ -6,6 +6,7 @@ dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 export const config = {
   bot: {
     name: process.env.WECHAT_BOT_NAME || 'AI助手',
+    memoryName: `data/${process.env.WECHAT_BOT_NAME || 'AI助手'}`,
     autoAcceptFriend: process.env.WECHAT_AUTO_ACCEPT_FRIEND === 'true',
     autoReplyFriend: process.env.WECHAT_AUTO_REPLY_FRIEND || '你好，我是AI助手，很高兴认识你！',
     adminWechat: process.env.BOT_ADMIN_WECHAT || '',

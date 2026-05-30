@@ -39,7 +39,7 @@ async function main() {
   registerPlugin(stockPlugin);
 
   const bot = WechatyBuilder.build({
-    name: config.bot.name,
+    name: config.bot.memoryName,
     puppet: 'wechaty-puppet-wechat4u' as any,
   });
 
