@@ -1,28 +1,33 @@
 FROM node:20-slim
 
-# Playwright system dependencies + CJK fonts for Chinese pages
+# === China mirrors ===
+RUN sed -i 's|deb.debian.org|mirrors.aliyun.com|g' /etc/apt/sources.list.d/debian.sources 2>/dev/null; \
+    sed -i 's|deb.debian.org|mirrors.aliyun.com|g' /etc/apt/sources.list 2>/dev/null; \
+    true
+
+ENV NPM_REGISTRY=https://registry.npmmirror.com
+ENV PLAYWRIGHT_DOWNLOAD_HOST=https://npmmirror.com/mirrors/playwright/
+
+# Playwright system dependencies + CJK fonts
 RUN apt-get update && apt-get install -y \
     fonts-noto-cjk \
     --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Playwright's system deps for chromium
 RUN npx playwright install-deps chromium-headless-shell && \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
 COPY package.json package-lock.json ./
-RUN npm ci
+RUN npm config set registry $NPM_REGISTRY && \
+    npm ci
 
 COPY . .
 RUN npm run build && \
     npm prune --production && \
     npx playwright install chromium-headless-shell
 
-# Persistent data (browser profile, cookies, price tracks, rss state)
 VOLUME /app/data
-
-ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=0
 
 CMD ["node", "dist/index.js"]
