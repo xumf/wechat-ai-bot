@@ -7,7 +7,7 @@ services:
     env_file: .env
     volumes:
       - wechat-bot-data:/app/data
-    restart: unless-stopped
+    restart: always
 
 volumes:
   wechat-bot-data:
