@@ -270,7 +270,7 @@ async function convertPdd(url: string): Promise<string> {
   if (!goodsId) return '❌ 无法识别拼多多商品ID';
 
   const params: Record<string, string> = {
-    type: 'pdd.ddk.oauth.goods.prom.url.generate',
+    type: 'pdd.ddk.goods.prom.url.generate',
     client_id: clientId,
     timestamp: String(Math.floor(Date.now() / 1000)),
     data_type: 'JSON',
@@ -283,7 +283,10 @@ async function convertPdd(url: string): Promise<string> {
   params.sign = signPdd(params, clientSecret);
 
   try {
-    const res = await axios.post('https://gw-api.pinduoduo.com/api/router', null, { params, timeout: 10000 });
+    const res = await axios.post('https://gw-api.pinduoduo.com/api/router',
+      new URLSearchParams(params).toString(),
+      { headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=utf-8' }, timeout: 10000 }
+    );
     const body = res.data;
     if (body.error_response) {
       return `❌ 拼多多API错误: ${body.error_response.error_msg || JSON.stringify(body.error_response)}`;
