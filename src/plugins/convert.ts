@@ -181,6 +181,84 @@ async function convertJd(url: string): Promise<string> {
     return `❌ 未配置京东联盟 API\n请在 .env 设置 JD_APP_KEY, JD_APP_SECRET, JD_POSITION_ID`;
   }
   if (!siteId) {
+    return `❌ 缺少京东站点ID (siteId)\n\n京东联盟有两种媒体类型:\n1. 网站/APP - 需要ICP备案域名，siteId填网站ID\n2. 导购媒体 - 需要申请 unionId 权限\n\n请登录 https://union.jd.com/ → 推广管理 → 查看你的媒体类型\n如是网站/APP: 获取数字站点ID填入 .env JD_SITE_ID=xxx\n如是导购: 需申请 jd.union.open.promotion.byunionid.get 权限`;
+  }
+
+  // Resolve short URLs (3.cn)
+  let resolvedUrl = url;
+  if (/3\.cn/i.test(url)) {
+    const finalUrl = await followRedirect(url);
+    if (finalUrl) {
+      const returnUrlMatch = finalUrl.match(/returnurl=([^&]+)/);
+      if (returnUrlMatch) {
+        resolvedUrl = decodeURIComponent(returnUrlMatch[1]);
+      } else {
+        resolvedUrl = finalUrl;
+      }
+    }
+  }
+
+  const materialId = extractItemId(resolvedUrl, 'jd');
+  if (!materialId) return '❌ 无法识别京东商品ID';
+
+  const itemUrl = resolvedUrl.startsWith('http') ? resolvedUrl.match(/https?:\/\/[^\s]+/)?.[0] || '' : `https://item.jd.com/${materialId}.html`;
+  const bizJson = JSON.stringify({
+    promotionCodeReq: {
+      materialId: itemUrl,
+      siteId: siteId,
+      positionId: Number(positionId) || 0,
+      chainType: 2,
+      sceneId: 2,
+    },
+  });
+
+  const params: Record<string, string> = {
+    method: 'jd.union.open.promotion.common.get',
+    app_key: appKey,
+    timestamp: ts(),
+    format: 'json',
+    v: '1.0',
+    '360buy_param_json': bizJson,
+  };
+  params.sign = tbSign(params, appSecret);
+
+  try {
+    const res = await axios.get('https://api.jd.com/routerjson', { params, timeout: 10000 });
+    const body = res.data;
+    if (body.error_response) {
+      const err = body.error_response;
+      if (err.zh_desc) return `❌ 京东API错误: ${err.zh_desc}`;
+      return `❌ 京东API错误: ${err.msg || JSON.stringify(err)}`;
+    }
+    const resp = body?.jd_union_open_promotion_common_get_response
+      || body?.jd_union_open_promotion_common_get_responce;
+    const resultStr = resp?.getResult || resp?.result;
+    if (resultStr) {
+      let data: any;
+      try { data = typeof resultStr === 'string' ? JSON.parse(resultStr) : resultStr; } catch { data = resultStr; }
+      if (data.code && data.code !== 200) {
+        const msg = data.message || JSON.stringify(data);
+        if (msg.includes('导购') || msg.includes('siteId')) {
+          return `❌ 京东API错误: ${msg}\n\n你的媒体类型是"导购"，不支持此API\n需要申请 jd.union.open.promotion.byunionid.get 权限\n使用 unionId 代替 siteId`;
+        }
+        return `❌ 京东API错误: ${msg}`;
+      }
+      if (data?.data?.clickURL) {
+        return `✅ 京东推广链接已生成:\n${data.data.clickURL}`;
+      }
+      if (data?.clickURL) {
+        return `✅ 京东推广链接已生成:\n${data.clickURL}`;
+      }
+      if (data?.shortURL) {
+        return `✅ 京东推广链接已生成:\n${data.shortURL}`;
+      }
+    }
+    return '❌ 京东API未返回推广链接';
+  } catch (e: any) {
+    return `❌ 请求京东API失败: ${e.message}`;
+  }
+}
+  if (!siteId) {
     return `❌ 缺少京东站点ID (siteId)\n请登录 https://union.jd.com/ → 推广管理 → 网站/APP管理\n创建"网站"或"APP"类型（非导购媒体），获取数字站点ID后添加到 .env: JD_SITE_ID=你的站点ID`;
   }
 
@@ -261,7 +339,21 @@ function signPdd(params: Record<string, string>, secret: string): string {
   let str = secret;
   for (const k of keys) str += k + params[k];
   str += secret;
-  return crypto.createHash('md5').update(str).digest('hex').toLowerCase();
+  return crypto.createHash('md5').update(str).digest('hex').toUpperCase();
+}
+
+async function extractPddGoodsSign(url: string): Promise<string | null> {
+  try {
+    const res = await axios.get(url, { timeout: 10000, responseType: 'text', maxRedirects: 5 });
+    const html = res.data;
+    // Look for goodsSign in page source
+    const match = html.match(/goodsSign['":\s]*['"]([^'"]+)['"]/i)
+      || html.match(/goods_sign['":\s]*['"]([^'"]+)['"]/i)
+      || html.match(/"goodsSign"\s*:\s*"([^"]+)"/i);
+    return match?.[1] || null;
+  } catch {
+    return null;
+  }
 }
 
 async function convertPdd(url: string): Promise<string> {
@@ -275,17 +367,32 @@ async function convertPdd(url: string): Promise<string> {
   const goodsId = extractItemId(url, 'pdd');
   if (!goodsId) return '❌ 无法识别拼多多商品ID';
 
+  // Try to get goods_sign from product page
+  const goodsSign = await extractPddGoodsSign(url);
+
   const params: Record<string, string> = {
-    type: 'pdd.ddk.goods.prom.url.generate',
+    type: 'pdd.ddk.goods.promotion.url.generate',
     client_id: clientId,
     timestamp: String(Math.floor(Date.now() / 1000)),
     data_type: 'JSON',
     version: 'V1',
-    goods_id_list: `["${goodsId}"]`,
     p_id: pid || '',
     generate_short_url: 'true',
+    generate_we_app: 'true',
     multi_weapp_webview: 'true',
   };
+
+  if (goodsSign) {
+    params.goods_sign_list = JSON.stringify([goodsSign]);
+  } else {
+    // Fallback: use rp.prom.url.generate for general promotion
+    params.type = 'pdd.ddk.rp.prom.url.generate';
+    params.p_id_list = JSON.stringify([pid]);
+    params.channel_type = '10';
+    delete params.goods_sign_list;
+    delete params.p_id;
+  }
+
   params.sign = signPdd(params, clientSecret);
 
   try {
@@ -297,10 +404,17 @@ async function convertPdd(url: string): Promise<string> {
     if (body.error_response) {
       return `❌ 拼多多API错误: ${body.error_response.error_msg || JSON.stringify(body.error_response)}`;
     }
-    const goodsProm = body?.goods_prom_url_generate_response?.goods_prom_url_list?.[0];
+    // Handle single product response
+    const goodsProm = body?.goods_promotion_url_generate_response?.goods_promotion_url_list?.[0];
     if (goodsProm) {
-      const link = goodsProm.we_app_web_view_short_url || goodsProm.we_short_url || goodsProm.url || goodsProm.short_url;
+      const link = goodsProm.mobile_short_url || goodsProm.short_url || goodsProm.mobile_url || goodsProm.url;
       if (link) return `✅ 拼多多推广链接已生成:\n${link}`;
+    }
+    // Handle general promotion response
+    const rpProm = body?.rp_promotion_url_generate_response?.url_list?.[0];
+    if (rpProm) {
+      const link = rpProm.mobile_short_url || rpProm.short_url || rpProm.url;
+      if (link) return `✅ 拼多多推广链接已生成:\n${link}\n\n⚠️ 这是通用推广链接，如需单品推广链接请先授权`;
     }
     return '❌ 拼多多API未返回推广链接';
   } catch (e: any) {
