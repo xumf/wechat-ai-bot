@@ -288,35 +288,28 @@ async function convertPdd(url: string): Promise<string> {
     return `❌ 未配置拼多多推广 API\n请先在 .env 设置 PDD_CLIENT_ID, PDD_CLIENT_SECRET, PDD_PID`;
   }
 
-  const goodsId = extractItemId(url, 'pdd');
+  // Resolve short URLs to get goods_id
+  let resolvedUrl = url;
+  if (/mobile\.yangkeduo\.com.*ps=/.test(url) || /yangkeduo\.com\/goods2\.html\?ps=/.test(url)) {
+    const finalUrl = await followRedirect(url);
+    if (finalUrl) resolvedUrl = finalUrl;
+  }
+
+  const goodsId = extractItemId(resolvedUrl, 'pdd');
   if (!goodsId) return '❌ 无法识别拼多多商品ID';
 
-  // Try to get goods_sign from product page
-  const goodsSign = await extractPddGoodsSign(url);
-
+  // Use rp.prom.url.generate for general promotion (no goods_sign needed)
   const params: Record<string, string> = {
-    type: 'pdd.ddk.goods.promotion.url.generate',
+    type: 'pdd.ddk.rp.prom.url.generate',
     client_id: clientId,
     timestamp: String(Math.floor(Date.now() / 1000)),
     data_type: 'JSON',
     version: 'V1',
-    p_id: pid || '',
+    p_id_list: JSON.stringify([pid]),
+    channel_type: '10',
     generate_short_url: 'true',
     generate_we_app: 'true',
-    multi_weapp_webview: 'true',
   };
-
-  if (goodsSign) {
-    params.goods_sign_list = JSON.stringify([goodsSign]);
-  } else {
-    // Fallback: use rp.prom.url.generate for general promotion
-    params.type = 'pdd.ddk.rp.prom.url.generate';
-    params.p_id_list = JSON.stringify([pid]);
-    params.channel_type = '10';
-    delete params.goods_sign_list;
-    delete params.p_id;
-  }
-
   params.sign = signPdd(params, clientSecret);
 
   try {
@@ -328,17 +321,17 @@ async function convertPdd(url: string): Promise<string> {
     if (body.error_response) {
       return `❌ 拼多多API错误: ${body.error_response.error_msg || JSON.stringify(body.error_response)}`;
     }
+    // Handle general promotion response
+    const rpProm = body?.rp_promotion_url_generate_response?.url_list?.[0];
+    if (rpProm) {
+      const link = rpProm.mobile_short_url || rpProm.short_url || rpProm.url;
+      if (link) return `✅ 拼多多推广链接已生成:\n${link}`;
+    }
     // Handle single product response
     const goodsProm = body?.goods_promotion_url_generate_response?.goods_promotion_url_list?.[0];
     if (goodsProm) {
       const link = goodsProm.mobile_short_url || goodsProm.short_url || goodsProm.mobile_url || goodsProm.url;
       if (link) return `✅ 拼多多推广链接已生成:\n${link}`;
-    }
-    // Handle general promotion response
-    const rpProm = body?.rp_promotion_url_generate_response?.url_list?.[0];
-    if (rpProm) {
-      const link = rpProm.mobile_short_url || rpProm.short_url || rpProm.url;
-      if (link) return `✅ 拼多多推广链接已生成:\n${link}\n\n⚠️ 这是通用推广链接，如需单品推广链接请先授权`;
     }
     return '❌ 拼多多API未返回推广链接';
   } catch (e: any) {
