@@ -36,3 +36,13 @@ export function setupRoomEvents() {
 
   logger.info('Room events (join/leave) initialized');
 }
+
+export const roomPlugin: Plugin = {
+  name: '群管理',
+  description: '/roomid - 获取当前群的群ID',
+  commands: ['/roomid'],
+  onCommand: async (ctx) => {
+    if (!ctx.roomId) return '❌ 请在群聊中使用此命令';
+    return `📋 当前群ID:\n${ctx.roomId}`;
+  },
+};

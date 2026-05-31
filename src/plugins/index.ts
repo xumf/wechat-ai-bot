@@ -8,7 +8,7 @@ export { keywordPlugin } from './keyword';
 export { translatePlugin } from './translate';
 export { rssPlugin, startRSSPolling } from './rss';
 export { subscribeDaily, startDailyGreeting } from './daily';
-export { setBotInstance, setupRoomEvents } from './room-manager';
+export { setBotInstance, setupRoomEvents, roomPlugin } from './room-manager';
 export { pricePlugin, startPriceTracking } from './price';
 export { jokePlugin } from './joke';
 export { hotPlugin } from './hot';
