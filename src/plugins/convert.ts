@@ -4,7 +4,7 @@ import crypto from 'crypto';
 import logger from '../utils/logger';
 
 const PLATFORM_PATTERNS = [
-  { id: 'taobao', name: '淘宝/天猫', patterns: [/taobao\.com|tmall\.com|tb\.cn|m\.tb\.cn/i] },
+  { id: 'taobao', name: '淘宝/天猫', patterns: [/taobao\.com|tmall\.com|tb\.cn|m\.tb\.cn|e\.tb\.cn/i] },
   { id: 'jd', name: '京东', patterns: [/jd\.com|jd\.hk|item\.m\.jd|3\.cn/i] },
   { id: 'pdd', name: '拼多多', patterns: [/pinduoduo\.com|yangkeduo\.com|pdd\.link|mobile\.yangkeduo/i] },
 ];
@@ -20,14 +20,17 @@ function extractItemId(url: string, platform: string): string | null {
   const normalized = url.startsWith('http') ? url : 'https://' + url;
   try {
     const parsed = new URL(normalized);
-    if (platform === 'taobao') return parsed.searchParams.get('id');
+    if (platform === 'taobao') {
+      return parsed.searchParams.get('id')
+        || parsed.searchParams.get('shareDetailItemId')
+        || null;
+    }
     if (platform === 'jd') {
       const m = parsed.pathname.match(/(\d+)\.html/);
       return m?.[1] || null;
     }
     if (platform === 'pdd') return parsed.searchParams.get('goods_id');
   } catch {
-    // Try regex fallback for malformed URLs
     if (platform === 'taobao') {
       const m = url.match(/[?&]id=(\d+)/);
       return m?.[1] || null;
@@ -42,6 +45,28 @@ function extractItemId(url: string, platform: string): string | null {
     }
   }
   return null;
+}
+
+async function followShortUrl(url: string): Promise<string | null> {
+  try {
+    const res = await axios.get(url, { timeout: 10000, responseType: 'text' });
+    const html = res.data;
+    // Look for shareDetailItemId in the HTML (Taobao short links)
+    const itemId = html.match(/shareDetailItemId=(\d+)/);
+    if (itemId) return itemId[1];
+    // Fallback: look for id= in URLs
+    const idMatch = html.match(/[?&]id=(\d+)/);
+    if (idMatch) return idMatch[1];
+    // Fallback: look for any item URL
+    const urlMatch = html.match(/https?:\/\/[^\s"']*(?:taobao|tmall)[^\s"']*/);
+    if (urlMatch) {
+      const parsed = new URL(urlMatch[0]);
+      return parsed.searchParams.get('id') || parsed.searchParams.get('shareDetailItemId') || null;
+    }
+    return null;
+  } catch {
+    return null;
+  }
 }
 
 function tbSign(params: Record<string, string>, secret: string): string {
@@ -90,7 +115,8 @@ async function convertTaobao(url: string): Promise<string> {
     return `❌ 未配置淘宝联盟 API\n请先在 .env 设置 TB_APP_KEY, TB_APP_SECRET, TB_ADZONE_ID`;
   }
 
-  const itemId = extractItemId(url, 'taobao');
+  let itemId = extractItemId(url, 'taobao');
+  if (!itemId) itemId = await followShortUrl(url);
   if (!itemId) return '❌ 无法识别淘宝商品ID，请使用商品详情页链接';
 
   const params: Record<string, string> = {
@@ -229,7 +255,9 @@ export const convertPlugin: Plugin = {
   description: '/convert <链接> 或 /转链 <链接> - 商品链接转推广链接\n  支持: 淘宝/天猫, 京东, 拼多多',
   commands: ['/convert', '/转链'],
   onCommand: async (ctx) => {
-    const url = ctx.args[0];
+    const raw = ctx.args.join(' ');
+    const urlMatch = raw.match(/https?:\/\/[^\s\]）\)》】,，]+/);
+    const url = urlMatch?.[0] || ctx.args[0];
     if (!url) return `❌ 请提供商品链接\n用法: /convert <链接>\n\n${instructions}`;
     if (url === 'help' || url === '帮助') return instructions;
 
@@ -245,16 +273,16 @@ export const convertPlugin: Plugin = {
     return '❌ 不支持的平台';
   },
   onMessage: async (text) => {
-    const trimmed = text.trim();
-    const urlMatch = trimmed.match(/^(https?:\/\/[^\s]+)/);
+    const urlMatch = text.match(/https?:\/\/[^\s\]）\)》】,，]+/);
     if (!urlMatch) return null;
 
-    const platform = getPlatform(urlMatch[1]);
+    const url = urlMatch[0];
+    const platform = getPlatform(url);
     if (!platform) return null;
 
     const hasKeys = !!(process.env.TB_APP_KEY || process.env.JD_APP_KEY || process.env.PDD_CLIENT_ID);
     if (!hasKeys) return null;
 
-    return `📦 检测到${platform.name}商品链接\n回复 /convert ${urlMatch[1]} 可转为推广链接`;
+    return `📦 检测到${platform.name}商品链接\n回复 /convert ${url} 可转为推广链接`;
   },
 };
