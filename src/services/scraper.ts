@@ -337,7 +337,7 @@ export async function convertTaobaoLink(productUrl: string): Promise<string | nu
     const allLinks = await page.evaluate(() => {
       const links: string[] = [];
       document.querySelectorAll('a[href*="s.click.taobao"], a[href*="uland.taobao"], a[href*="m.tb.cn"]').forEach(a => {
-        links.push(a.href);
+        links.push((a as HTMLAnchorElement).href);
       });
       document.querySelectorAll('input, textarea').forEach(el => {
         const val = (el as HTMLInputElement).value;
