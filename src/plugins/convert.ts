@@ -181,7 +181,7 @@ async function convertJd(url: string): Promise<string> {
     return `❌ 未配置京东联盟 API\n请在 .env 设置 JD_APP_KEY, JD_APP_SECRET, JD_POSITION_ID`;
   }
   if (!siteId) {
-    return `❌ 缺少京东站点ID (siteId)\n请登录 https://union.jd.com/ → 推广管理 → 网站/APP管理\n获取数字站点ID后添加到 .env: JD_SITE_ID=你的站点ID`;
+    return `❌ 缺少京东站点ID (siteId)\n请登录 https://union.jd.com/ → 推广管理 → 网站/APP管理\n创建"网站"或"APP"类型（非导购媒体），获取数字站点ID后添加到 .env: JD_SITE_ID=你的站点ID`;
   }
 
   // Resolve short URLs (3.cn)
@@ -233,15 +233,21 @@ async function convertJd(url: string): Promise<string> {
     }
     const resp = body?.jd_union_open_promotion_common_get_response
       || body?.jd_union_open_promotion_common_get_responce;
-    const result = resp?.result;
-    if (result) {
+    const resultStr = resp?.getResult || resp?.result;
+    if (resultStr) {
       let data: any;
-      try { data = typeof result === 'string' ? JSON.parse(result) : result; } catch { data = result; }
+      try { data = typeof resultStr === 'string' ? JSON.parse(resultStr) : resultStr; } catch { data = resultStr; }
+      if (data.code && data.code !== 200) {
+        return `❌ 京东API错误: ${data.message || JSON.stringify(data)}`;
+      }
       if (data?.data?.clickURL) {
         return `✅ 京东推广链接已生成:\n${data.data.clickURL}`;
       }
       if (data?.clickURL) {
         return `✅ 京东推广链接已生成:\n${data.clickURL}`;
+      }
+      if (data?.shortURL) {
+        return `✅ 京东推广链接已生成:\n${data.shortURL}`;
       }
     }
     return '❌ 京东API未返回推广链接';
