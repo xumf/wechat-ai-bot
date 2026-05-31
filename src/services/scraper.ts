@@ -225,6 +225,145 @@ export async function getBrowserContext(): Promise<BrowserContext> {
   return getContext();
 }
 
+export async function convertTaobaoLink(productUrl: string): Promise<string | null> {
+  let page: Page | null = null;
+  try {
+    const ctx = await getContext();
+    page = await ctx.newPage();
+    await page.setViewportSize({ width: 1280, height: 800 });
+
+    // Navigate to the tool page
+    await page.goto(
+      'https://pub.alimama.com/portal/v2/tool/links/page/home/index.htm',
+      { waitUntil: 'networkidle', timeout: 30000 }
+    );
+    await page.waitForTimeout(3000);
+
+    // Check if logged in (look for login form or redirect)
+    const currentUrl = page.url();
+    if (currentUrl.includes('login') || currentUrl.includes('signin')) {
+      logger.warn('Not logged in to Taobao Union');
+      return null;
+    }
+
+    // Find the input field - try multiple selectors
+    const inputSelectors = [
+      'textarea[placeholder*="链接"]',
+      'textarea[placeholder*="粘贴"]',
+      'textarea[placeholder*="请输入"]',
+      'input[placeholder*="链接"]',
+      'input[placeholder*="粘贴"]',
+      'input[placeholder*="请输入"]',
+      '.link-input textarea',
+      '.link-input input',
+      '.tool-link-input textarea',
+      '.tool-link-input input',
+      'textarea',
+    ];
+
+    let inputEl = null;
+    for (const sel of inputSelectors) {
+      inputEl = await page.$(sel);
+      if (inputEl) break;
+    }
+
+    if (!inputEl) {
+      logger.warn('Could not find input field on Taobao Union tool page');
+      // Take screenshot for debugging
+      await page.screenshot({ path: path.join(__dirname, '../../data/taobao-tool-debug.png') });
+      return null;
+    }
+
+    // Clear and type the URL
+    await inputEl.click();
+    await inputEl.fill('');
+    await inputEl.fill(productUrl);
+    await page.waitForTimeout(500);
+
+    // Find and click the convert button
+    const buttonSelectors = [
+      'button:has-text("转换")',
+      'button:has-text("生成")',
+      'button:has-text("获取")',
+      '.convert-btn',
+      '.tool-convert-btn',
+      'button.primary',
+      'button[type="submit"]',
+    ];
+
+    let btnEl = null;
+    for (const sel of buttonSelectors) {
+      btnEl = await page.$(sel);
+      if (btnEl) break;
+    }
+
+    if (!btnEl) {
+      logger.warn('Could not find convert button on Taobao Union tool page');
+      await page.screenshot({ path: path.join(__dirname, '../../data/taobao-tool-debug.png') });
+      return null;
+    }
+
+    await btnEl.click();
+    await page.waitForTimeout(5000);
+
+    // Extract the result - try multiple selectors for the affiliate link
+    const resultSelectors = [
+      '.result-link',
+      '.link-result',
+      '.convert-result',
+      '.tool-result',
+      'textarea.result',
+      '.copy-link',
+      '[class*="result"] textarea',
+      '[class*="result"] input',
+      '.short-link',
+      '.promo-link',
+    ];
+
+    let resultEl = null;
+    for (const sel of resultSelectors) {
+      resultEl = await page.$(sel);
+      if (resultEl) break;
+    }
+
+    if (resultEl) {
+      const link = await resultEl.evaluate((el: any) => el.value || el.textContent);
+      if (link && link.includes('http')) {
+        return link.trim();
+      }
+    }
+
+    // Fallback: look for any new links that appeared after conversion
+    const allLinks = await page.evaluate(() => {
+      const links: string[] = [];
+      document.querySelectorAll('a[href*="s.click.taobao"], a[href*="uland.taobao"], a[href*="m.tb.cn"]').forEach(a => {
+        links.push(a.href);
+      });
+      document.querySelectorAll('input, textarea').forEach(el => {
+        const val = (el as HTMLInputElement).value;
+        if (val && val.includes('http') && (val.includes('taobao') || val.includes('tmall'))) {
+          links.push(val);
+        }
+      });
+      return links;
+    });
+
+    if (allLinks.length > 0) {
+      return allLinks[0];
+    }
+
+    // Take screenshot for debugging
+    await page.screenshot({ path: path.join(__dirname, '../../data/taobao-tool-debug.png') });
+    logger.warn('Could not extract affiliate link from Taobao Union tool');
+    return null;
+  } catch (e: any) {
+    logger.error('Taobao link conversion failed', { error: e.message });
+    return null;
+  } finally {
+    if (page) await page.close().catch(() => {});
+  }
+}
+
 export async function closeContext() {
   if (ctx) {
     await ctx.close();

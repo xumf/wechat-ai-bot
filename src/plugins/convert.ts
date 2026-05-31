@@ -2,6 +2,7 @@ import { Plugin } from './types';
 import axios from 'axios';
 import crypto from 'crypto';
 import logger from '../utils/logger';
+import { convertTaobaoLink } from '../services/scraper';
 
 const PLATFORM_PATTERNS = [
   { id: 'taobao', name: '淘宝/天猫', patterns: [/taobao\.com|tmall\.com|tb\.cn|m\.tb\.cn|e\.tb\.cn/i] },
@@ -125,15 +126,29 @@ const instructions = `📋 使用前需配置:
      PDD_PID=你的推广位ID`;
 
 async function convertTaobao(url: string): Promise<string> {
+  // Resolve short URLs (e.tb.cn, m.tb.cn)
+  let resolvedUrl = url;
+  if (/e\.tb\.cn|m\.tb\.cn/i.test(url)) {
+    const finalUrl = await followShortUrl(url);
+    if (finalUrl) resolvedUrl = finalUrl;
+  }
+
+  // Use Playwright to automate the 万能转链 tool
+  const link = await convertTaobaoLink(resolvedUrl);
+  if (link) {
+    return `✅ 淘宝推广链接已生成:\n${link}`;
+  }
+
+  // Fallback: try API (may fail due to permission)
   const appKey = process.env.TB_APP_KEY || '';
   const appSecret = process.env.TB_APP_SECRET || '';
   const adzoneId = process.env.TB_ADZONE_ID || '';
   if (!appKey || !appSecret || !adzoneId) {
-    return `❌ 未配置淘宝联盟 API\n请先在 .env 设置 TB_APP_KEY, TB_APP_SECRET, TB_ADZONE_ID`;
+    return `❌ 淘宝推广链接转换失败\n未配置淘宝联盟API，请检查登录状态或配置 .env`;
   }
 
-  let itemId = extractItemId(url, 'taobao');
-  if (!itemId) itemId = await followShortUrl(url);
+  let itemId = extractItemId(resolvedUrl, 'taobao');
+  if (!itemId) itemId = await followShortUrl(resolvedUrl);
   if (!itemId) return '❌ 无法识别淘宝商品ID，请使用商品详情页链接';
 
   async function tbApi(method: string, extra: Record<string, string>) {
@@ -142,7 +157,6 @@ async function convertTaobao(url: string): Promise<string> {
     return (await axios.get('https://gw.api.taobao.com/router/rest', { params: p, timeout: 10000 })).data;
   }
 
-  // Try item.convert first
   let body = await tbApi('taobao.tbk.item.convert', { fields: 'num_iid,click_url', num_iids: itemId, adzone_id: adzoneId, platform: '2' }).catch(e => ({ error_response: { sub_msg: e.message } }));
   let err = body?.error_response;
 
@@ -153,22 +167,7 @@ async function convertTaobao(url: string): Promise<string> {
     }
   }
 
-  // If convert is blocked by permissions, try item.info.get as fallback
-  if (err && (err.code === 11 || err.sub_code?.includes('permission'))) {
-    // Try taobao.tbk.item.info.get (user has scope 16189)
-    const infoBody = await tbApi('taobao.tbk.item.info.get', { fields: 'num_iid,title,item_url,pict_url,reserve_price,zk_final_price', num_iids: itemId, platform: '2' }).catch(() => null);
-    const infoErr = infoBody?.error_response;
-    if (infoErr && infoErr.sub_msg?.includes('新商品ID')) {
-      return `❌ 该商品已升级为新ID格式，\ntaobao.tbk.item.convert 权限暂未开放\n目前仅支持京东、拼多多的推广转链`;
-    }
-    const item = infoBody?.tbk_item_info_get_response?.results?.n_tbk_item?.[0];
-    if (item) {
-      return `📦 ${item.title}\n💰 ¥${item.zk_final_price || item.reserve_price || '?'}\n🔗 ${item.item_url}\n\n⚠️ taobao.tbk.item.convert 权限未开放，无法生成推广链接\n可尝试京东/拼多多链接转链`;
-    }
-    return `❌ 淘宝商品链接转换功能暂不可用\n原因: AppKey 缺少 taobao.tbk.item.convert 权限\n此接口为邀约制，需联系淘宝联盟申请开通`;
-  }
-
-  if (err) return `❌ 淘宝API错误: ${err.sub_msg || err.msg}`;
+  if (err) return `❌ 淘宝推广链接转换失败\n请检查淘宝联盟登录状态\n或配置 .env 中的 TB_APP_KEY, TB_APP_SECRET, TB_ADZONE_ID`;
   return '❌ 淘宝API未返回推广链接';
 }
 

@@ -21,7 +21,7 @@ npm run login:china  # headful browser to log into Taobao/JD for price scraping
 ## Gotchas
 
 - **`ctx.rawText`** in `CommandContext` is set by `handleCommand()` in `registry.ts`. Plugins reading `ctx.rawText` (translate, price) will break if new code forgets to set it.
-- **Taobao search** uses CSS module hashed classes (e.g., `div[class*="doubleCard"]`). These may break on Taobao frontend updates.
+- **Taobao affiliate**: Uses Playwright automation on https://pub.alimama.com/portal/v2/tool/links/page/home/index.htm (万能转链 tool). Requires logged-in session via `npm run login:china`. API fallback with `taobao.tbk.item.convert` may fail due to invitation-only permission.
 - **JD search** is blocked by anti-scraping ("访问频繁"). Login works (persistent profile), search doesn't. Fixing JD requires `playwright-extra` stealth upgrades, different IP/proxy, or headful mode.
 - **JD affiliate API** (`jd.union.open.promotion.common.get`): requires `promotionCodeReq` wrapper + `sceneId=2` for item links + numeric `siteId` (not appKey UUID). `siteId` must be from a 网站/APP type media in JD Union backend (not 导购). Response key is `getResult` (not `result`).
 - **Amazon search** works with no auth needed.
