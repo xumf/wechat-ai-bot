@@ -227,98 +227,86 @@ export async function getBrowserContext(): Promise<BrowserContext> {
 }
 
 export async function convertTaobaoLink(productUrl: string): Promise<string | null> {
+  let page: Page | null = null;
   try {
-    // Load cookies from file
-    if (!fs.existsSync(COOKIE_FILE)) return null;
-    const allCookies = JSON.parse(fs.readFileSync(COOKIE_FILE, 'utf8'));
-    const almCookies = allCookies.filter((c: any) => c.domain.includes('alimama'));
-    if (almCookies.length === 0) return null;
+    const ctx = await getContext();
+    page = await ctx.newPage();
+    await page.setViewportSize({ width: 1280, height: 800 });
 
-    // Build cookie string
-    const cookieStr = almCookies.map((c: any) => `${c.name}=${c.value}`).join('; ');
-
-    // Extract _tb_token_ from cookies
-    const tbToken = almCookies.find((c: any) => c.name === '_tb_token_')?.value || '';
-    const lid = almCookies.find((c: any) => c.name === 'lid')?.value || '';
-
-    if (!tbToken || !lid) {
-      logger.warn('Missing _tb_token_ or lid in Alimama cookies');
-      return null;
-    }
-
-    // Extract PID from refpid or use default
-    const refpid = process.env.TB_ADZONE_ID ? `mm_0_0_${process.env.TB_ADZONE_ID}` : '';
-
-    const variableMap = JSON.stringify({
-      url: `【淘宝】${productUrl}`,
-      superRedSwitch: '0',
-      union_lens: '',
-      lensScene: 'PUB',
-      spmB: '_portal_v2_tool_links_page_home_index_htm',
-    });
-
-    const params = new URLSearchParams({
-      t: String(Date.now()),
-      _tb_token_: tbToken,
-      floorId: '61446',
-      refpid: refpid,
-      variableMap: variableMap,
-    });
-
-    const res = await axios.post(
-      'https://pub.alimama.com/openapi/param2/1/gateway.unionpub/xt.entry.json',
-      params.toString(),
-      {
-        headers: {
-          'accept': '*/*',
-          'accept-language': 'zh-CN,zh;q=0.9',
-          'bx-v': '2.5.11',
-          'content-type': 'application/x-www-form-urlencoded; charset=UTF-8',
-          'cookie': cookieStr,
-          'priority': 'u=1, i',
-          'referer': 'https://pub.alimama.com/portal/v2/tool/links/page/home/index.htm',
-          'sec-ch-ua': '"Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"',
-          'sec-ch-ua-mobile': '?0',
-          'sec-ch-ua-platform': '"Windows"',
-          'sec-fetch-dest': 'empty',
-          'sec-fetch-mode': 'cors',
-          'sec-fetch-site': 'same-origin',
-          'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36',
-          'x-requested-with': 'XMLHttpRequest',
-        },
-        timeout: 15000,
-      }
+    // Navigate to Alimama tool page first to establish session
+    await page.goto(
+      'https://pub.alimama.com/portal/v2/tool/links/page/home/index.htm',
+      { waitUntil: 'networkidle', timeout: 30000 }
     );
+    await page.waitForTimeout(2000);
 
-    const data = res.data;
-
-    // Check for CAPTCHA/security verification
-    if (typeof data === 'string' && (data.includes('rgv587_flag') || data.includes('_____tmd_____'))) {
-      logger.warn('Alimama API triggered security verification (CAPTCHA)');
+    // Check if logged in
+    const currentUrl = page.url();
+    if (currentUrl.includes('login') || currentUrl.includes('signin')) {
+      logger.warn('Not logged in to Taobao Union');
       return null;
     }
 
-    if (data.error) {
-      logger.warn('Alimama API error', { error: data.error });
+    // Execute the API call from within the browser context
+    const result = await page.evaluate(async (url: string) => {
+      const refpid = 'mm_0_0_116276750377';
+      const variableMap = JSON.stringify({
+        url: '【淘宝】' + url,
+        superRedSwitch: '0',
+        union_lens: '',
+        lensScene: 'PUB',
+        spmB: '_portal_v2_tool_links_page_home_index_htm',
+      });
+
+      const params = new URLSearchParams({
+        t: String(Date.now()),
+        _tb_token_: (document.cookie.match(/_tb_token_=([^;]+)/) || [])[1] || '',
+        floorId: '61446',
+        refpid: refpid,
+        variableMap: variableMap,
+      });
+
+      const res = await fetch('https://pub.alimama.com/openapi/param2/1/gateway.unionpub/xt.entry.json', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+          'X-Requested-With': 'XMLHttpRequest',
+        },
+        body: params.toString(),
+      });
+
+      return await res.json();
+    }, productUrl);
+
+    // Check for CAPTCHA
+    if (result?.rgv587_flag || result?.x5step) {
+      logger.warn('Alimama API triggered CAPTCHA', { result });
       return null;
     }
 
-    // Extract the promotion link from response
-    const result = data?.data?.model || data?.data;
-    if (result?.shortLinkUrl) return result.shortLinkUrl;
-    if (result?.clickUrl) return result.clickUrl;
-    if (result?.couponLink) return result.couponLink;
+    if (result?.error) {
+      logger.warn('Alimama API error', { error: result.error });
+      return null;
+    }
+
+    // Extract the promotion link
+    const model = result?.data?.model || result?.data;
+    if (model?.shortLinkUrl) return model.shortLinkUrl;
+    if (model?.clickUrl) return model.clickUrl;
+    if (model?.couponLink) return model.couponLink;
 
     // Try to find any URL in the response
-    const str = JSON.stringify(data);
+    const str = JSON.stringify(result);
     const urlMatch = str.match(/https?:\/\/[^\s"']*(?:taobao|tmall|tb\.cn)[^\s"']*/);
     if (urlMatch) return urlMatch[0];
 
-    logger.warn('Could not extract link from Alimama response', { data });
+    logger.warn('Could not extract link from Alimama response', { result });
     return null;
   } catch (e: any) {
     logger.error('Alimama API call failed', { error: e.message });
     return null;
+  } finally {
+    if (page) await page.close().catch(() => {});
   }
 }
 
