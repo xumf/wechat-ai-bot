@@ -87,9 +87,17 @@ function tbSign(params: Record<string, string>, secret: string): string {
 }
 
 function ts(): string {
-  const d = new Date();
   const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  // Use GMT+8 (China Standard Time) regardless of server timezone
+  const d = new Date();
+  const cst = new Date(d.getTime() + 8 * 60 * 60 * 1000);
+  const y = cst.getUTCFullYear();
+  const m = pad(cst.getUTCMonth() + 1);
+  const day = pad(cst.getUTCDate());
+  const h = pad(cst.getUTCHours());
+  const min = pad(cst.getUTCMinutes());
+  const s = pad(cst.getUTCSeconds());
+  return `${y}-${m}-${day} ${h}:${min}:${s}`;
 }
 
 const instructions = `📋 使用前需配置:

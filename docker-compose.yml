@@ -4,6 +4,8 @@ services:
     container_name: wechat-bot
     stdin_open: true
     tty: true
+    environment:
+      - TZ=Asia/Shanghai
     env_file: .env
     volumes:
       - ./data:/app/data
