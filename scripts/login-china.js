@@ -1,5 +1,8 @@
-const { chromium } = require('playwright');
+const { chromium } = require('playwright-extra');
+const StealthPlugin = require('puppeteer-extra-plugin-stealth');
 const path = require('path');
+
+chromium.use(StealthPlugin());
 
 const PROFILE_DIR = path.join(__dirname, '..', 'data', 'browser-profile');
 
@@ -16,7 +19,12 @@ async function main() {
   const context = await chromium.launchPersistentContext(PROFILE_DIR, {
     headless: false,
     viewport: null,
-    args: ['--no-sandbox'],
+    args: [
+      '--no-sandbox',
+      '--disable-blink-features=AutomationControlled',
+      '--disable-infobars',
+    ],
+    ignoreDefaultArgs: ['--enable-automation'],
   });
 
   const page = await context.newPage();
