@@ -23,6 +23,7 @@ npm run login:china  # headful browser to log into Taobao/JD for price scraping
 - **`ctx.rawText`** in `CommandContext` is set by `handleCommand()` in `registry.ts`. Plugins reading `ctx.rawText` (translate, price) will break if new code forgets to set it.
 - **Taobao search** uses CSS module hashed classes (e.g., `div[class*="doubleCard"]`). These may break on Taobao frontend updates.
 - **JD search** is blocked by anti-scraping ("访问频繁"). Login works (persistent profile), search doesn't. Fixing JD requires `playwright-extra` stealth upgrades, different IP/proxy, or headful mode.
+- **JD affiliate API** (`jd.union.open.promotion.common.get`): requires `promotionCodeReq` wrapper + `sceneId=2` for item links + numeric `siteId` (not appKey UUID). `siteId` is obtained from https://union.jd.com/ → 推广管理 → 网站/APP管理.
 - **Amazon search** works with no auth needed.
 - **Login flow**: `npm run login:china` opens headful Chrome, user logs in, presses Enter to save. Must re-run when cookies expire.
 - **GitHub push** over HTTPS is blocked on this network; use SSH (`git@github.com:xumf/wechat-ai-bot.git`).

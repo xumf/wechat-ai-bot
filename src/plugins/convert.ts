@@ -159,8 +159,12 @@ async function convertJd(url: string): Promise<string> {
   const appKey = process.env.JD_APP_KEY || '';
   const appSecret = process.env.JD_APP_SECRET || '';
   const positionId = process.env.JD_POSITION_ID || '';
+  const siteId = process.env.JD_SITE_ID || '';
   if (!appKey || !appSecret) {
-    return `❌ 未配置京东联盟 API\n请先在 .env 设置 JD_APP_KEY, JD_APP_SECRET, JD_POSITION_ID`;
+    return `❌ 未配置京东联盟 API\n请在 .env 设置 JD_APP_KEY, JD_APP_SECRET, JD_POSITION_ID`;
+  }
+  if (!siteId) {
+    return `❌ 缺少京东站点ID (siteId)\n请登录 https://union.jd.com/ → 推广管理 → 网站/APP管理\n获取数字站点ID后添加到 .env: JD_SITE_ID=你的站点ID`;
   }
 
   const materialId = extractItemId(url, 'jd');
@@ -168,37 +172,44 @@ async function convertJd(url: string): Promise<string> {
 
   const itemUrl = url.startsWith('http') ? url.match(/https?:\/\/[^\s]+/)?.[0] || '' : `https://item.jd.com/${materialId}.html`;
   const bizJson = JSON.stringify({
-    materialId: itemUrl,
-    siteId: appKey,
-    positionId: positionId || 0,
-    chainType: 2,
+    promotionCodeReq: {
+      materialId: itemUrl,
+      siteId: siteId,
+      positionId: Number(positionId) || 0,
+      chainType: 2,
+      sceneId: 2,
+    },
   });
 
   const params: Record<string, string> = {
     method: 'jd.union.open.promotion.common.get',
     app_key: appKey,
-    timestamp: ts().replace(/-/g, '-'),
+    timestamp: ts(),
     format: 'json',
     v: '1.0',
     '360buy_param_json': bizJson,
   };
-  params.sign = tbSign(params, appSecret); // same as Taobao (uppercase MD5)
+  params.sign = tbSign(params, appSecret);
 
   try {
     const res = await axios.get('https://api.jd.com/routerjson', { params, timeout: 10000 });
     const body = res.data;
     if (body.error_response) {
-      return `❌ 京东API错误: ${body.error_response.msg || JSON.stringify(body.error_response)}`;
+      const err = body.error_response;
+      if (err.zh_desc) return `❌ 京东API错误: ${err.zh_desc}`;
+      return `❌ 京东API错误: ${err.msg || JSON.stringify(err)}`;
     }
-    const result = body?.jd_union_open_promotion_common_get_response?.result;
+    const resp = body?.jd_union_open_promotion_common_get_response
+      || body?.jd_union_open_promotion_common_get_responce;
+    const result = resp?.result;
     if (result) {
       let data: any;
-      try { data = JSON.parse(result); } catch { data = result; }
+      try { data = typeof result === 'string' ? JSON.parse(result) : result; } catch { data = result; }
+      if (data?.data?.clickURL) {
+        return `✅ 京东推广链接已生成:\n${data.data.clickURL}`;
+      }
       if (data?.clickURL) {
         return `✅ 京东推广链接已生成:\n${data.clickURL}`;
-      }
-      if (data?.shortURL) {
-        return `✅ 京东推广链接已生成:\n${data.shortURL}`;
       }
     }
     return '❌ 京东API未返回推广链接';
