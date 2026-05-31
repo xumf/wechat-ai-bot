@@ -272,9 +272,17 @@ export async function convertTaobaoLink(productUrl: string): Promise<string | nu
         headers: {
           'accept': '*/*',
           'accept-language': 'zh-CN,zh;q=0.9',
+          'bx-v': '2.5.11',
           'content-type': 'application/x-www-form-urlencoded; charset=UTF-8',
           'cookie': cookieStr,
+          'priority': 'u=1, i',
           'referer': 'https://pub.alimama.com/portal/v2/tool/links/page/home/index.htm',
+          'sec-ch-ua': '"Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"',
+          'sec-ch-ua-mobile': '?0',
+          'sec-ch-ua-platform': '"Windows"',
+          'sec-fetch-dest': 'empty',
+          'sec-fetch-mode': 'cors',
+          'sec-fetch-site': 'same-origin',
           'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36',
           'x-requested-with': 'XMLHttpRequest',
         },
@@ -283,6 +291,13 @@ export async function convertTaobaoLink(productUrl: string): Promise<string | nu
     );
 
     const data = res.data;
+
+    // Check for CAPTCHA/security verification
+    if (typeof data === 'string' && (data.includes('rgv587_flag') || data.includes('_____tmd_____'))) {
+      logger.warn('Alimama API triggered security verification (CAPTCHA)');
+      return null;
+    }
+
     if (data.error) {
       logger.warn('Alimama API error', { error: data.error });
       return null;
