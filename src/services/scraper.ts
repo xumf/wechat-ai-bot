@@ -1,5 +1,6 @@
 import path from 'path';
 import fs from 'fs';
+import axios from 'axios';
 import { chromium } from 'playwright-extra';
 import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 import { BrowserContext, Page } from 'playwright';
@@ -226,141 +227,83 @@ export async function getBrowserContext(): Promise<BrowserContext> {
 }
 
 export async function convertTaobaoLink(productUrl: string): Promise<string | null> {
-  let page: Page | null = null;
   try {
-    const ctx = await getContext();
-    page = await ctx.newPage();
-    await page.setViewportSize({ width: 1280, height: 800 });
+    // Load cookies from file
+    if (!fs.existsSync(COOKIE_FILE)) return null;
+    const allCookies = JSON.parse(fs.readFileSync(COOKIE_FILE, 'utf8'));
+    const almCookies = allCookies.filter((c: any) => c.domain.includes('alimama'));
+    if (almCookies.length === 0) return null;
 
-    // Navigate to the tool page
-    await page.goto(
-      'https://pub.alimama.com/portal/v2/tool/links/page/home/index.htm',
-      { waitUntil: 'networkidle', timeout: 30000 }
-    );
-    await page.waitForTimeout(3000);
+    // Build cookie string
+    const cookieStr = almCookies.map((c: any) => `${c.name}=${c.value}`).join('; ');
 
-    // Check if logged in (look for login form or redirect)
-    const currentUrl = page.url();
-    if (currentUrl.includes('login') || currentUrl.includes('signin')) {
-      logger.warn('Not logged in to Taobao Union');
+    // Extract _tb_token_ from cookies
+    const tbToken = almCookies.find((c: any) => c.name === '_tb_token_')?.value || '';
+    const lid = almCookies.find((c: any) => c.name === 'lid')?.value || '';
+
+    if (!tbToken || !lid) {
+      logger.warn('Missing _tb_token_ or lid in Alimama cookies');
       return null;
     }
 
-    // Find the input field - try multiple selectors
-    const inputSelectors = [
-      'textarea[placeholder*="链接"]',
-      'textarea[placeholder*="粘贴"]',
-      'textarea[placeholder*="请输入"]',
-      'input[placeholder*="链接"]',
-      'input[placeholder*="粘贴"]',
-      'input[placeholder*="请输入"]',
-      '.link-input textarea',
-      '.link-input input',
-      '.tool-link-input textarea',
-      '.tool-link-input input',
-      'textarea',
-    ];
+    // Extract PID from refpid or use default
+    const refpid = process.env.TB_ADZONE_ID ? `mm_0_0_${process.env.TB_ADZONE_ID}` : '';
 
-    let inputEl = null;
-    for (const sel of inputSelectors) {
-      inputEl = await page.$(sel);
-      if (inputEl) break;
-    }
-
-    if (!inputEl) {
-      logger.warn('Could not find input field on Taobao Union tool page');
-      // Take screenshot for debugging
-      await page.screenshot({ path: path.join(__dirname, '../../data/taobao-tool-debug.png') });
-      return null;
-    }
-
-    // Clear and type the URL
-    await inputEl.click();
-    await inputEl.fill('');
-    await inputEl.fill(productUrl);
-    await page.waitForTimeout(500);
-
-    // Find and click the convert button
-    const buttonSelectors = [
-      'button:has-text("转换")',
-      'button:has-text("生成")',
-      'button:has-text("获取")',
-      '.convert-btn',
-      '.tool-convert-btn',
-      'button.primary',
-      'button[type="submit"]',
-    ];
-
-    let btnEl = null;
-    for (const sel of buttonSelectors) {
-      btnEl = await page.$(sel);
-      if (btnEl) break;
-    }
-
-    if (!btnEl) {
-      logger.warn('Could not find convert button on Taobao Union tool page');
-      await page.screenshot({ path: path.join(__dirname, '../../data/taobao-tool-debug.png') });
-      return null;
-    }
-
-    await btnEl.click();
-    await page.waitForTimeout(5000);
-
-    // Extract the result - try multiple selectors for the affiliate link
-    const resultSelectors = [
-      '.result-link',
-      '.link-result',
-      '.convert-result',
-      '.tool-result',
-      'textarea.result',
-      '.copy-link',
-      '[class*="result"] textarea',
-      '[class*="result"] input',
-      '.short-link',
-      '.promo-link',
-    ];
-
-    let resultEl = null;
-    for (const sel of resultSelectors) {
-      resultEl = await page.$(sel);
-      if (resultEl) break;
-    }
-
-    if (resultEl) {
-      const link = await resultEl.evaluate((el: any) => el.value || el.textContent);
-      if (link && link.includes('http')) {
-        return link.trim();
-      }
-    }
-
-    // Fallback: look for any new links that appeared after conversion
-    const allLinks = await page.evaluate(() => {
-      const links: string[] = [];
-      document.querySelectorAll('a[href*="s.click.taobao"], a[href*="uland.taobao"], a[href*="m.tb.cn"]').forEach(a => {
-        links.push((a as HTMLAnchorElement).href);
-      });
-      document.querySelectorAll('input, textarea').forEach(el => {
-        const val = (el as HTMLInputElement).value;
-        if (val && val.includes('http') && (val.includes('taobao') || val.includes('tmall'))) {
-          links.push(val);
-        }
-      });
-      return links;
+    const variableMap = JSON.stringify({
+      url: `【淘宝】${productUrl}`,
+      superRedSwitch: '0',
+      union_lens: '',
+      lensScene: 'PUB',
+      spmB: '_portal_v2_tool_links_page_home_index_htm',
     });
 
-    if (allLinks.length > 0) {
-      return allLinks[0];
+    const params = new URLSearchParams({
+      t: String(Date.now()),
+      _tb_token_: tbToken,
+      floorId: '61446',
+      refpid: refpid,
+      variableMap: variableMap,
+    });
+
+    const res = await axios.post(
+      'https://pub.alimama.com/openapi/param2/1/gateway.unionpub/xt.entry.json',
+      params.toString(),
+      {
+        headers: {
+          'accept': '*/*',
+          'accept-language': 'zh-CN,zh;q=0.9',
+          'content-type': 'application/x-www-form-urlencoded; charset=UTF-8',
+          'cookie': cookieStr,
+          'referer': 'https://pub.alimama.com/portal/v2/tool/links/page/home/index.htm',
+          'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36',
+          'x-requested-with': 'XMLHttpRequest',
+        },
+        timeout: 15000,
+      }
+    );
+
+    const data = res.data;
+    if (data.error) {
+      logger.warn('Alimama API error', { error: data.error });
+      return null;
     }
 
-    // Take screenshot for debugging
-    await page.screenshot({ path: path.join(__dirname, '../../data/taobao-tool-debug.png') });
-    logger.warn('Could not extract affiliate link from Taobao Union tool');
+    // Extract the promotion link from response
+    const result = data?.data?.model || data?.data;
+    if (result?.shortLinkUrl) return result.shortLinkUrl;
+    if (result?.clickUrl) return result.clickUrl;
+    if (result?.couponLink) return result.couponLink;
+
+    // Try to find any URL in the response
+    const str = JSON.stringify(data);
+    const urlMatch = str.match(/https?:\/\/[^\s"']*(?:taobao|tmall|tb\.cn)[^\s"']*/);
+    if (urlMatch) return urlMatch[0];
+
+    logger.warn('Could not extract link from Alimama response', { data });
     return null;
   } catch (e: any) {
-    logger.error('Taobao link conversion failed', { error: e.message });
+    logger.error('Alimama API call failed', { error: e.message });
     return null;
-  } finally {
-    if (page) await page.close().catch(() => {});
   }
 }
 
