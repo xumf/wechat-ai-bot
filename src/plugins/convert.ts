@@ -47,6 +47,15 @@ function extractItemId(url: string, platform: string): string | null {
   return null;
 }
 
+async function followRedirect(url: string): Promise<string | null> {
+  try {
+    const res = await axios.get(url, { timeout: 10000, maxRedirects: 5, responseType: 'text' });
+    return res.request?.res?.responseUrl || res.request?.responseURL || url;
+  } catch {
+    return null;
+  }
+}
+
 async function followShortUrl(url: string): Promise<string | null> {
   try {
     const res = await axios.get(url, { timeout: 10000, responseType: 'text' });
@@ -167,10 +176,25 @@ async function convertJd(url: string): Promise<string> {
     return `❌ 缺少京东站点ID (siteId)\n请登录 https://union.jd.com/ → 推广管理 → 网站/APP管理\n获取数字站点ID后添加到 .env: JD_SITE_ID=你的站点ID`;
   }
 
-  const materialId = extractItemId(url, 'jd');
+  // Resolve short URLs (3.cn)
+  let resolvedUrl = url;
+  if (/3\.cn/i.test(url)) {
+    const finalUrl = await followRedirect(url);
+    if (finalUrl) {
+      // The redirect may land on a risk handler page with returnurl
+      const returnUrlMatch = finalUrl.match(/returnurl=([^&]+)/);
+      if (returnUrlMatch) {
+        resolvedUrl = decodeURIComponent(returnUrlMatch[1]);
+      } else {
+        resolvedUrl = finalUrl;
+      }
+    }
+  }
+
+  const materialId = extractItemId(resolvedUrl, 'jd');
   if (!materialId) return '❌ 无法识别京东商品ID';
 
-  const itemUrl = url.startsWith('http') ? url.match(/https?:\/\/[^\s]+/)?.[0] || '' : `https://item.jd.com/${materialId}.html`;
+  const itemUrl = resolvedUrl.startsWith('http') ? resolvedUrl.match(/https?:\/\/[^\s]+/)?.[0] || '' : `https://item.jd.com/${materialId}.html`;
   const bizJson = JSON.stringify({
     promotionCodeReq: {
       materialId: itemUrl,
