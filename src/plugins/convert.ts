@@ -137,7 +137,11 @@ async function convertTaobao(url: string): Promise<string> {
     const res = await axios.get('https://gw.api.taobao.com/router/rest', { params, timeout: 10000 });
     const body = res.data;
     if (body.error_response) {
-      return `❌ 淘宝API错误: ${body.error_response.sub_msg || body.error_response.msg}`;
+      const err = body.error_response;
+      if (err.code === 11 || err.sub_code?.includes('permission')) {
+        return `❌ AppKey 缺少淘宝客API权限\n\n请按以下步骤开通:\n1. 打开 https://open.taobao.com/\n2. 登录 → 控制台 → 应用管理\n3. 找到你的应用 → 权限管理\n4. 点击"添加API" → 搜索 "taobao.tbk.item.convert"\n5. 申请权限（部分需要审核）\n6. 通过后重新尝试`;
+      }
+      return `❌ 淘宝API错误: ${err.sub_msg || err.msg}`;
     }
     const items = body?.tbk_item_convert_response?.results?.n_tbk_item;
     if (items?.length && items[0].click_url) {
